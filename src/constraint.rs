@@ -33,13 +33,6 @@ where
         }
         init
     }
-
-    /// Get a random unsolved cell. Returns `None` if there are no more unsolved cells.
-    pub fn random_unsolved(&self) -> Option<(Id<U>, CellState<T>)> {
-        self.get_unsolved()
-            .choose(&mut thread_rng())
-            .map(|(id, data)| (Id::Index(id), data.clone()))
-    }
 }
 
 impl<const U: usize, T> ConstraintGrid<U, T>
@@ -66,21 +59,34 @@ where
     }
 
     /// Get alls solved cells
-    pub fn get_solved(&self) -> impl Iterator<Item = (usize, &CellState<T>)> {
-        self.data
-            .data
-            .iter()
-            .enumerate()
-            .filter(|x| x.1.is_solved())
+    pub fn get_solved(&self) -> impl Iterator<Item = CellRef<U, CellState<T>>> {
+        self.data.iter().filter(|x| x.data.is_solved())
     }
 
     /// Get all unsolved cells
-    pub fn get_unsolved(&self) -> impl Iterator<Item = (usize, &CellState<T>)> {
+    pub fn get_unsolved(&self) -> impl Iterator<Item = CellRef<U, CellState<T>>> {
         self.data
-            .data
             .iter()
-            .enumerate()
-            .filter(|x| !x.1.is_solved() && !x.1.impossible())
+            .filter(|x| !x.data.is_solved() && !x.data.impossible())
+    }
+}
+
+impl<const U: usize, T> Deref for ConstraintGrid<U, T>
+where
+    T: Clone + PartialEq + Eq + Hash,
+{
+    type Target = Grid<U, CellState<T>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+impl<const U: usize, T> DerefMut for ConstraintGrid<U, T>
+where
+    T: Clone + PartialEq + Eq + Hash,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
     }
 }
 
@@ -360,25 +366,36 @@ where
             None => Err(Error::NotExist),
         }
     }
-}
 
-impl<const U: usize, T> Deref for ConstraintGrid<U, T>
-where
-    T: Clone + Eq + Hash,
-{
-    type Target = Grid<U, CellState<T>>;
+    /// Get a random unsolved cell, preferring unsolved cells neighboring solved
+    /// cells . Returns `None` if there are no more unsolved cells.
+    pub fn random_unsolved(&self) -> Option<CellRef2<CellState<T>>> {
+        // This isn't truely random. We'll first try choosing something from the
+        // unsolved neighbors of currently solved cells to avoid generating
+        // things in islands. If this fails, we'll try with any tile on the
+        // board
+        let unsolved_neighbors = self
+            .get_solved()
+            .into_iter()
+            .map(|neighbor| {
+                self.get_neighbors(neighbor.id)
+                    .data
+                    .iter()
+                    // Ensure we only get unsolved neighbors
+                    .filter(|x| x.as_ref().map(|x| !x.data.is_solved()).unwrap_or_default())
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .flatten();
 
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl<const U: usize, T> DerefMut for ConstraintGrid<U, T>
-where
-    T: Clone + Eq + Hash,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
+        match unsolved_neighbors.choose(&mut thread_rng()) {
+            Some(random) => random,
+            None => {
+                // No adjacent unsolved neighbors found. Get a completely random
+                // one instead
+                self.get_unsolved().choose(&mut thread_rng())
+            }
+        }
     }
 }
 

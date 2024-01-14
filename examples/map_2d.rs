@@ -66,7 +66,7 @@ fn main() {
     // synth.synthesize(10, 10, 10000).unwrap().pretty_print();
     // synth.synthesize(7, 7, 10000).unwrap().pretty_print();
     // synth.synthesize(7, 7, 1000).unwrap().pretty_print();
-    let grid = synth.synthesize(8, 8, 10000).unwrap();
+    let grid = synth.synthesize(16, 16, 100000, 16).unwrap();
     // dbg!(info);
     println!("{}", grid.to_string_from_cell(|t| t.to_string()));
 }

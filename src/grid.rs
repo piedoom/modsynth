@@ -1,3 +1,8 @@
+use std::{
+    slice::{Iter, IterMut},
+    vec::IntoIter,
+};
+
 use rand::{seq::IteratorRandom, thread_rng};
 
 /// 2-dimensional [`CellRefMut`]
@@ -44,6 +49,83 @@ where
     pub fn data(&self) -> &Vec<T> {
         &self.data
     }
+
+    /// Get grid data
+    pub fn iter(&self) -> impl Iterator<Item = CellRef<U, T>> {
+        self.data
+            .iter()
+            .enumerate()
+            .map(|(i, data)| CellRef::<U, T> {
+                data,
+                id: Id::Index(i),
+            })
+    }
+
+    /// Get grid data mutably
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        self.data.iter_mut()
+    }
+}
+
+impl<const U: usize, T> IntoIterator for Grid<U, T>
+where
+    T: Clone,
+{
+    type Item = Cell<U, T>;
+
+    type IntoIter = GridIter<U, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            index: 0,
+            data: self.data,
+        }
+    }
+}
+
+/// Iterator over a grid
+pub struct GridIter<const U: usize, T>
+where
+    T: Clone,
+{
+    index: usize,
+    data: Vec<T>,
+}
+
+impl<const U: usize, T> Iterator for GridIter<U, T>
+where
+    T: Clone,
+{
+    type Item = Cell<U, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.data.get(self.index).map(|t| {
+            let c = Cell {
+                data: t.clone(),
+                id: Id::Index::<U>(self.index),
+            };
+            c
+        });
+
+        if self.index >= self.data.len() {
+            return None;
+        }
+        let next = Cell {
+            data: self.data[self.index].clone(),
+            id: Id::Index(self.index),
+        };
+        self.index += 1;
+        Some(next)
+    }
+}
+
+/// Moved cell
+#[derive(Debug, Clone, Copy)]
+pub struct Cell<const U: usize, T> {
+    /// Reference to the cell data
+    pub data: T,
+    /// Cell `Id`
+    pub id: Id<U>,
 }
 
 /// Reference to a cell
@@ -346,6 +428,18 @@ mod tests {
         };
 
         assert_eq!(
+            Id::Index(0).as_coord(grid.width()),
+            Id::Coord([0, 0]).as_coord(grid.width())
+        );
+        assert_eq!(
+            Id::Index(1).as_coord(grid.width()),
+            Id::Coord([1, 0]).as_coord(grid.width())
+        );
+        assert_eq!(
+            Id::Index(2).as_coord(grid.width()),
+            Id::Coord([2, 0]).as_coord(grid.width())
+        );
+        assert_eq!(
             Id::Index(3).as_coord(grid.width()),
             Id::Coord([0, 1]).as_coord(grid.width())
         );
@@ -354,12 +448,12 @@ mod tests {
             Id::Coord([1, 1]).as_coord(grid.width())
         );
         assert_eq!(
-            Id::Index(1).as_coord(grid.width()),
-            Id::Coord([1, 0]).as_coord(grid.width())
+            Id::Index(5).as_coord(grid.width()),
+            Id::Coord([2, 1]).as_coord(grid.width())
         );
         assert_eq!(
-            Id::Index(0).as_coord(grid.width()),
-            Id::Coord([0, 0]).as_coord(grid.width())
+            Id::Index(6).as_coord(grid.width()),
+            Id::Coord([0, 2]).as_coord(grid.width())
         );
 
         let grid = grid_with_data(7, 7);

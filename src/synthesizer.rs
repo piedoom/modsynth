@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{vec_deque, HashMap, HashSet, VecDeque},
     ops::{Deref, DerefMut},
 };
 
@@ -55,6 +55,7 @@ where
         width: usize,
         height: usize,
         max_iterations: usize,
+        max_backtracks: usize,
     ) -> crate::error::Result<Grid2<T>> {
         // Initialize a constraint grid with all possible types
         let default_cell_set = CellState::from_iter(self.all_cell_types());
@@ -64,26 +65,72 @@ where
 
         // Solve the rest. `solve` will run until the grid is solved, or until
         // `max_iterations` is reached - whichever comes first.
-        self.solve(&mut grid, max_iterations).map(|_| Grid2 {
-            size: [width, height],
-            data: grid
-                .data()
-                .iter()
-                .map(|x| x.clone().flattened().unwrap())
-                .collect(),
-        })
+        self.solve(&mut grid, max_iterations, max_backtracks)
+            .map(|_| Grid2 {
+                size: [width, height],
+                data: grid
+                    .data()
+                    .iter()
+                    .map(|x| x.clone().flattened().unwrap())
+                    .collect(),
+            })
     }
 
-    fn solve(&self, grid: &mut ConstraintGrid2<T>, max_iterations: usize) -> crate::Result<()> {
+    /// Synthesize from a partially solved grid of constraints instead of
+    /// collapsing a point at random. Note, that if left unmodified, nothing
+    /// will ever be solved.
+    pub fn synthesize_from_starter(
+        &self,
+        width: usize,
+        height: usize,
+        max_iterations: usize,
+        max_backtracks: usize,
+        initialization: fn(&mut ConstraintGrid2<T>),
+    ) -> crate::error::Result<Grid2<T>> {
+        // Initialize a constraint grid with all possible types
+        let default_cell_set = CellState::from_iter(self.all_cell_types());
+        let mut grid = ConstraintGrid2::new([width, height]);
+        // Fill the grid with all possibilities as a hash set
+        grid.data.fill(default_cell_set);
+
+        // Run through the user defined initialization for the grid
+        initialization(&mut grid);
+
+        // Solve the rest. `solve` will run until the grid is solved, or until
+        // `max_iterations` is reached - whichever comes first.
+        self.solve(&mut grid, max_iterations, max_backtracks)
+            .map(|_| Grid2 {
+                size: [width, height],
+                data: grid
+                    .data()
+                    .iter()
+                    .map(|x| x.clone().flattened().unwrap())
+                    .collect(),
+            })
+    }
+
+    fn solve(
+        &self,
+        grid: &mut ConstraintGrid2<T>,
+        max_iterations: usize,
+        max_backtracks: usize,
+    ) -> crate::Result<()> {
         let mut iterations = 0;
         let initial_grid_state = grid.clone();
+        let mut grid_revisions = VecDeque::with_capacity(max_backtracks);
+        let mut backtrack_iteration: Option<usize> = None;
 
         // Collapse a random cell to start
-        let (id, _) = grid.random_unsolved().unwrap();
-        grid.collapse_at(id, &self.probabilities).unwrap();
+        let random_cell = grid.random_unsolved().unwrap();
+        grid.collapse_at(random_cell.id, &self.probabilities)
+            .unwrap();
 
         while iterations < max_iterations {
             iterations += 1;
+            // If not backtracking, add the grid to our history
+            if backtrack_iteration == None {
+                grid_revisions.push_front(grid.clone());
+            }
             match grid.solve_iteration(&self.probabilities) {
                 Ok(complete) => {
                     // If complete, return
@@ -93,15 +140,56 @@ where
                 }
                 Err(err) => match err {
                     Error::Impossible => {
-                        // Dead end. Reset to the initial state.
-                        // TODO: Backtracking
-                        *grid = initial_grid_state.clone();
+                        // Dead end. Try backtracking for a few times, then
+                        // reset
+                        match backtrack_iteration {
+                            Some(iteration) => {
+                                match iteration < max_backtracks {
+                                    true => {
+                                        // pop the revision, or reset to initial
+                                        // if no revisions
+                                        if let Some(grid_revision) = grid_revisions.pop_front() {
+                                            *grid = grid_revision.clone();
+                                            backtrack_iteration = Some(iteration + 1);
+                                            continue;
+                                        } else {
+                                            *grid = initial_grid_state.clone();
+                                            backtrack_iteration = None;
+                                            continue;
+                                        }
+                                    }
+                                    false => {
+                                        // out of backtracking tries. just reset
+                                        // to initial
+                                        *grid = initial_grid_state.clone();
+                                        backtrack_iteration = None;
+                                        continue;
+                                    }
+                                }
+                            }
+                            None => {
+                                // pop the revision and set that to the current grid, or reset to initial
+                                // if no revisions
+                                if let Some(grid_revision) = grid_revisions.pop_front() {
+                                    *grid = grid_revision.clone();
+                                    backtrack_iteration = Some(0);
+                                    continue;
+                                } else {
+                                    *grid = initial_grid_state.clone();
+                                    backtrack_iteration = None;
+                                    continue;
+                                }
+                            }
+                        }
                     }
                     Error::MissingInformation => {
                         // Not enough information to solve any more constraints.
-                        if let Some((id, _)) = grid.random_unsolved() {
+                        if let Some(random_cell) = grid.random_unsolved() {
                             // Collapse a new cell
-                            if grid.collapse_at(id, &self.probabilities).is_err() {
+                            if grid
+                                .collapse_at(random_cell.id, &self.probabilities)
+                                .is_err()
+                            {
                                 // Impossible state, reset!
                                 // TODO: Backtracking
                                 *grid = initial_grid_state.clone();

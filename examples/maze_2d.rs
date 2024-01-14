@@ -40,7 +40,7 @@ fn main() {
 
     println!("Generated:");
 
-    let grid = synth.synthesize(12, 6, 10000).unwrap();
+    let grid = synth.synthesize(36, 18, 10000, 16).unwrap();
     // dbg!(info);
     println!("{}", grid.to_string_from_cell(|t| t.to_string()));
 }

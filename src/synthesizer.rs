@@ -1,5 +1,5 @@
 use std::{
-    collections::{vec_deque, HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     ops::{Deref, DerefMut},
 };
 
@@ -128,7 +128,7 @@ where
         while iterations < max_iterations {
             iterations += 1;
             // If not backtracking, add the grid to our history
-            if backtrack_iteration == None {
+            if backtrack_iteration.is_none() {
                 grid_revisions.push_front(grid.clone());
             }
             match grid.solve_iteration(&self.probabilities) {
@@ -191,7 +191,6 @@ where
                                 .is_err()
                             {
                                 // Impossible state, reset!
-                                // TODO: Backtracking
                                 *grid = initial_grid_state.clone();
                             }
                         } else {

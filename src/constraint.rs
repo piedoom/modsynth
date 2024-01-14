@@ -374,10 +374,9 @@ where
         // unsolved neighbors of currently solved cells to avoid generating
         // things in islands. If this fails, we'll try with any tile on the
         // board
-        let unsolved_neighbors = self
+        let unsolved_neighbor = self
             .get_solved()
-            .into_iter()
-            .map(|neighbor| {
+            .flat_map(|neighbor| {
                 self.get_neighbors(neighbor.id)
                     .data
                     .iter()
@@ -386,10 +385,10 @@ where
                     .cloned()
                     .collect::<Vec<_>>()
             })
-            .flatten();
+            .choose(&mut thread_rng());
 
-        match unsolved_neighbors.choose(&mut thread_rng()) {
-            Some(random) => random,
+        match unsolved_neighbor {
+            Some(random) => random.clone(),
             None => {
                 // No adjacent unsolved neighbors found. Get a completely random
                 // one instead

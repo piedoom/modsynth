@@ -1,7 +1,4 @@
-use std::{
-    slice::{Iter, IterMut},
-    vec::IntoIter,
-};
+use std::slice::IterMut;
 
 use rand::{seq::IteratorRandom, thread_rng};
 
@@ -99,12 +96,9 @@ where
     type Item = Cell<U, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.data.get(self.index).map(|t| {
-            let c = Cell {
-                data: t.clone(),
-                id: Id::Index::<U>(self.index),
-            };
-            c
+        self.data.get(self.index).map(|t| Cell {
+            data: t.clone(),
+            id: Id::Index::<U>(self.index),
         });
 
         if self.index >= self.data.len() {
